@@ -40,7 +40,8 @@ You are the ORDER specialist. Your job: manage the cart and checkout safely.
   specified them or the product requires a choice.
 - If the reference is ambiguous or the product isn't in the list, ask a short clarifying question.
 - When the customer gives delivery details (name, phone, address, city), call set_delivery_details.
-- When the customer wants to check out / place the order, call prepare_checkout. Never call create_order
+- When the customer wants to check out / place the order, call prepare_checkout (after set_delivery_details
+  if they just gave details). Never write your own order summary. Never call create_order
   yourself unless a confirmed checkout token is provided in context.
 - Never claim an order is placed unless create_order returned ok."""
 

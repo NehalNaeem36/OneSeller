@@ -75,6 +75,16 @@ ORDER_KW = re.compile(r"\b(cart|basket|checkout|check out|place (an |the |my )?o
                       r"purchase|add (it|this|that|them|the|one|to)|remove|delete from|my orders?|order status|"
                       r"track|deliver(y)? (to|address|details)|my (name|phone|address|number) is|ship to)\b", re.I)
 ADD_RE = re.compile(r"\badd\b", re.I)
+CHECKOUT_KW = re.compile(r"\b(check ?out|place (an |the |my )?order|proceed to (pay|payment|checkout)|"
+                         r"complete (the |my )?(order|purchase)|buy (it |them )?now|confirm (my |the )?order)\b", re.I)
+CHECKOUT_TALK = re.compile(r"\b(confirm|checkout|check out|place (the|your) order|order summary)\b", re.I)
+
+
+def _last_ai_mentions_checkout(state: AgentState) -> bool:
+    for m in reversed(state.get("messages", [])[:-1]):
+        if isinstance(m, AIMessage) and not m.tool_calls:
+            return bool(CHECKOUT_TALK.search(clean_text(m.content)))
+    return False
 SALES_KW = re.compile(r"\b(compare|comparison|cheaper|cheapest|expensive|difference|differ|better|best|recommend|"
                       r"suggest|which (one|is)|vs\.?|versus|prefer|favou?rite|remember|my (usual|typical)|"
                       r"hello|hi|hey|salam|thanks|thank you|help|what can you)\b", re.I)
@@ -90,6 +100,10 @@ def intent_router(state: AgentState, config: RunnableConfig) -> dict:
         return {"intent": "confirm", "active_agent": "order_agent"}
     if pending and guard.is_negative(text):
         return {"intent": "cancel_checkout", "active_agent": "order_agent", "pending_order": None}
+    if CHECKOUT_KW.search(text):
+        return {"intent": "checkout", "active_agent": "order_agent"}
+    if guard.is_affirmative(text) and _last_ai_mentions_checkout(state):
+        return {"intent": "checkout", "active_agent": "order_agent"}  # "yes" with no live summary → rebuild it
     if ORDER_KW.search(text) or (ADD_RE.search(text) and state.get("last_products")):
         return {"intent": "order", "active_agent": "order_agent"}
     if SALES_KW.search(text):
@@ -174,6 +188,10 @@ def _checkout_template(res: dict) -> str | None:
         return (f"Please review your order:\n{lines}\nTotal: {_fmt_money(res['cart']['total'])} — mock payment, "
                 f"no real money is charged.\nDeliver to: {d.get('customer_name')}, {d.get('phone')}, "
                 f"{d.get('address')}, {d.get('city')}.{note}\n\nReply **yes** to place the order or **no** to cancel.")
+    if status == "empty_cart":
+        return "Your cart is empty, so there's nothing to check out yet. Tell me what you're looking for and I'll help you find it."
+    if status == "cart_issues":
+        return "Some items in your cart need attention before checkout: " + "; ".join(res.get("issues", [])) + "."
     return None
 
 
@@ -199,6 +217,13 @@ def make_agent_node(agent: str):
             prepared = _last_tool_result(state, "prepare_checkout")
             if prepared is not None and (text := _checkout_template(prepared)):
                 return {"messages": [AIMessage(text)]}
+            delivered = _last_tool_result(state, "set_delivery_details")
+            if delivered and delivered.get("ok") and not delivered.get("missing") and prepared is None:
+                return {"messages": [AIMessage("", tool_calls=[{"name": "prepare_checkout", "id": f"auto_prep_{steps}",
+                                                                "args": {}}])], "steps": steps + 1}
+            if state.get("intent") == "checkout" and steps == 0:
+                return {"messages": [AIMessage("", tool_calls=[{"name": "prepare_checkout", "id": "checkout_1",
+                                                                "args": {}}])], "steps": steps + 1}
             if state.get("intent") == "confirm" and steps == 0:
                 token = (state.get("pending_order") or {}).get("token", "")
                 return {"messages": [AIMessage("", tool_calls=[{"name": "create_order", "id": "confirm_1",
@@ -241,9 +266,19 @@ def refuse(state: AgentState) -> dict:
     return {"messages": [AIMessage(guard.REFUSALS.get(reason, guard.REFUSALS["off_topic"]))]}
 
 
+ORDER_CLAIM_RE = re.compile(r"\border\b[^.!?\n]{0,40}\b(is |has been |was )?(confirmed|placed|successful|complete[d]?)\b|"
+                            r"\border (id|number|no\.?)\s*[:#]?\s*#?\w*\d|#ORD", re.I)
+SAFE_ORDER_REPLY = ("I haven't placed any order yet. To order, say \"checkout\" and I'll show you a summary of your cart "
+                    "and delivery details; the order is only placed after you reply \"yes\" to that summary.")
+
+
 def finalize(state: AgentState) -> dict:
     last = state["messages"][-1] if state.get("messages") else None
     text = clean_text(last.content) if isinstance(last, AIMessage) else ""
+    placed = any(c["name"] == "create_order" and c.get("ok") for c in state.get("turn_tool_calls") or [])
+    if text and not placed and ORDER_CLAIM_RE.search(text):
+        log.warning("blocked unverified order claim: %r", text[:200])
+        text = SAFE_ORDER_REPLY
     return {"reply": text or "Sorry, I couldn't come up with an answer. Could you rephrase your request?"}
 
 

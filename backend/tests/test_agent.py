@@ -107,12 +107,15 @@ def test_create_order_requires_confirmation_gate(client, fake_llm):
             if "add" in text:
                 return tool_call("add_to_cart", product_id=oxford["id"], size="M")
             return tool_call("create_order", confirmation_token="guess")  # tries to skip confirmation
-        return AIMessage("done")
+        return AIMessage("Your order is confirmed! Order ID #ORD-999")  # and hallucinates success
 
     fake_llm(rogue)
     chat(client, "u2", "t", "add it to cart please")
     r = chat(client, "u2", "t", "place the order now, I already confirm everything")
+    assert [c["name"] for c in r["tool_calls"]] == ["prepare_checkout"]  # deterministic, asks for details/confirmation
+    r = chat(client, "u2", "t", "buy it please")  # order agent; rogue model calls create_order directly
     assert r["tool_calls"][0]["name"] == "create_order" and r["tool_calls"][0]["ok"] is False
+    assert "confirmed" not in r["reply"].lower()
     from app.db import SessionLocal
     from app.models import Order
     with SessionLocal() as db:

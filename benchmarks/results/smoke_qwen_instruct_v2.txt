@@ -1,0 +1,31 @@
+health: ok
+>>> Show me black shirts under Rs. 3000 in medium size
+[12.2s] tools=[('search_products', {'query': 'shirt', 'color': 'black', 'size': 'M', 'max_price': 3000, 'in_stock_only': True}, True)] tokens={'in': 2431, 'out': 274}
+Here are black shirts under Rs. 3000 in medium size, currently in stock:
+- **Black Crew Neck T-Shirt** – Rs. 1,299 – Sizes: S, M, L, XL – Stock: 25 – *Urban Threads*  
+- **Dry-Fit Black Sports Shirt** – Rs. 1,899 – Sizes: S, M, L, XL – Stock: 20 – *Stride Sneakers*  
+- **Slim Fit Black Poplin Shirt** – Rs. 2,299 – Sizes: M, L – Stock: 9 – *Urban Threads*  
+- **Classic Black Oxford Shirt** – Rs. 2,799 – Sizes: S, M, L, XL – Stock: 14 – *Urban Threads*  
+Note: The "Black Embroidered Kurta Shirt" (Rs. 2,950) is in size M/L but stock is low (3 units). All listed are under Rs. 3000 and in medium size.
+>>> Which one is cheaper?
+[1.9s] tools=[] tokens={'in': 1367, 'out': 40}
+The cheapest black shirt in medium size under Rs. 3000 is the **Black Crew Neck T-Shirt** at Rs. 1,299 – available from Urban Threads.
+>>> Add the cheaper one to my cart
+[4.5s] tools=[('add_to_cart', {'product_id': 6, 'size': 'M'}, True)] tokens={'in': 3084, 'out': 77}
+The Black Crew Neck T-Shirt (Medium, Rs. 1,299) from Urban Threads has been added to your cart. Total: Rs. 1,299. Ready to proceed with delivery details or checkout?
+>>> I want to checkout
+[0.1s] tools=[('prepare_checkout', {}, True)] tokens={'in': 0, 'out': 0}
+Your cart total is Rs. 1,299. To place the order I still need your full name, phone number, delivery address, city. Please share them.
+>>> My name is Ali Raza, phone 03211234567, address House 5 Street 9 DHA Phase 5, city Lahore
+[2.9s] tools=[('set_delivery_details', {'customer_name': 'Ali Raza', 'phone': '03211234567', 'address': 'House 5 Street 9 DHA Phase 5', 'city': 'Lahore'}, True), ('prepare_checkout', {}, True)] tokens={'in': 1594, 'out': 64}
+Please review your order:
+- 1 x Black Crew Neck T-Shirt (M) — Rs. 1,299 (Urban Threads)
+Total: Rs. 1,299 — mock payment, no real money is charged.
+Deliver to: Ali Raza, 03211234567, House 5 Street 9 DHA Phase 5, Lahore.
+(Test order via public API: no real stock is reserved.)
+Reply **yes** to place the order or **no** to cancel.
+>>> yes
+[0.1s] tools=[('create_order', {'confirmation_token': '12a40779'}, True)] tokens={'in': 0, 'out': 0}
+Your order is confirmed! ✅
+Order #1 from Urban Threads — Rs. 1,299 (1 x Black Crew Neck T-Shirt)
+Grand total: Rs. 1,299. Status: confirmed. You'll find it in your order history.

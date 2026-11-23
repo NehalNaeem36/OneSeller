@@ -25,7 +25,7 @@ class Settings(BaseSettings):
 
     # LLM
     llm_provider: str = "ollama"  # "ollama" | "anthropic" | "fake"
-    ollama_model: str = "qwen3:4b"
+    ollama_model: str = "qwen3:4b-instruct-2507-q4_K_M"
     ollama_base_url: str = "http://localhost:11434"
     ollama_num_ctx: int = 8192
     anthropic_api_key: str | None = None
