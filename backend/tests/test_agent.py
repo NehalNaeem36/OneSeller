@@ -281,3 +281,23 @@ def test_preference_extraction_is_conservative():
         "budget_max": "3000", "preferred_colors": "black", "preferred_categories": "shirt"}
     assert "size" not in parse_free_text("what size do you have")
     assert parse_free_text("shoes size 42 under 5000") == {"max_price": 5000.0, "size": "42"}
+
+
+def test_tools_resolve_products_by_name(client):
+    from app.agent import tools as T
+    _, oxford, poplin, linen = seed_catalog(client)
+    ctx = T.ToolContext(principal="api:resolver", channel="public_api", sandbox=True, customer_id=None,
+                        user_message="", state={})
+    r = T.execute("add_to_cart", {"product_name": "white linen shirt"}, "order_agent", ctx)
+    assert r["ok"] and r["added"]["product_id"] == linen["id"]
+    amb = T.execute("add_to_cart", {"product_name": "black shirt"}, "order_agent", ctx)
+    assert not amb["ok"] and amb["error"] == "ambiguous_product" and "Oxford" in amb["message"]
+    assert len(ctx.updates["last_products"]) == 2  # candidates become referable ("the first one")
+    inv = T.execute("check_inventory", {"product_name": "Slim Black Poplin Shirt", "size": "S"}, "catalog_agent", ctx)
+    assert inv["ok"] and inv["size_available"] is False and inv["stock"] == 4
+    cmp = T.execute("compare_products", {"product_names": ["Classic Black Oxford Shirt", "White Linen Shirt"]},
+                    "sales_agent", ctx)
+    assert cmp["ok"] and cmp["cheapest_id"] == oxford["id"]
+    gone = T.execute("remove_from_cart", {"product_name": "linen"}, "order_agent", ctx)
+    assert gone["ok"] and gone["cart"]["items"] == []
+    assert T.execute("add_to_cart", {"product_name": "flying carpet"}, "order_agent", ctx)["error"] == "not_found"

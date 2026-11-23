@@ -50,13 +50,16 @@ class search_products(BaseModel):
 
 
 class get_product_details(BaseModel):
-    """Get full details (description, all colors and sizes, stock, store) of one product by its id."""
-    product_id: int
+    """Get full details (description, colors, sizes, stock, store) of one product, by id or by name."""
+    product_id: Optional[int] = Field(None, description="Product id from earlier results, if known")
+    product_name: Optional[str] = Field(None, description="Product name if the id is not known, e.g. 'Teal Printed Kurta'")
 
 
 class check_inventory(BaseModel):
-    """Check whether a product (optionally a specific color/size/quantity) is available right now."""
-    product_id: int
+    """Check whether a product (optionally a specific color/size/quantity) is in stock right now. Pass the product
+    id, or the product name if you don't know the id."""
+    product_id: Optional[int] = Field(None, description="Product id from earlier results, if known")
+    product_name: Optional[str] = Field(None, description="Product name if the id is not known, e.g. 'Teal Printed Kurta'")
     color: Optional[str] = None
     size: Optional[str] = None
     quantity: int = Field(1, ge=1, le=100)
@@ -68,8 +71,10 @@ class search_stores(BaseModel):
 
 
 class compare_products(BaseModel):
-    """Compare 2-5 products side by side (price, stock, colors, sizes) using live data."""
-    product_ids: list[int] = Field(..., min_length=2, max_length=5)
+    """Compare 2-5 products side by side (price, stock, colors, sizes) using live data. Pass ids if known,
+    otherwise product names."""
+    product_ids: list[int] = Field(default_factory=list, max_length=5)
+    product_names: list[str] = Field(default_factory=list, max_length=5)
 
 
 class save_preference(BaseModel):
@@ -79,16 +84,19 @@ class save_preference(BaseModel):
 
 
 class add_to_cart(BaseModel):
-    """Add a product to the customer's cart. Use the product id from search results."""
-    product_id: int
+    """Add a product to the customer's cart. Pass the product id from earlier results, or the product name if the
+    customer named a product you haven't looked up (it is resolved against the live catalog)."""
+    product_id: Optional[int] = Field(None, description="Product id from earlier results, if known")
+    product_name: Optional[str] = Field(None, description="Product name if the id is not known, e.g. 'Teal Printed Kurta'")
     quantity: int = Field(1, ge=1, le=100)
     color: Optional[str] = None
     size: Optional[str] = None
 
 
 class remove_from_cart(BaseModel):
-    """Remove a product from the customer's cart."""
-    product_id: int
+    """Remove a product from the customer's cart, by product id or by (part of) its name, e.g. 't-shirt'."""
+    product_id: Optional[int] = Field(None, description="Product id from earlier results, if known")
+    product_name: Optional[str] = Field(None, description="Product name if the id is not known, e.g. 'Teal Printed Kurta'")
 
 
 class get_cart(BaseModel):
@@ -144,6 +152,36 @@ def _cart_summary(db: Session, principal: str) -> dict:
             "issues": out["issues"]}
 
 
+def resolve_product(db: Session, ctx: ToolContext, product_id: int | None, product_name: str | None) -> Product:
+    """Server-side product resolution: id, else exact name, else recently shown products, else catalog search.
+    Ambiguous names raise an error listing candidates instead of guessing."""
+    if product_id:
+        return catalog.get_visible_product(db, product_id)
+    name = (product_name or "").strip()
+    if not name:
+        raise AppError(400, "missing_product", "Provide a product_id or product_name.")
+    norm = catalog._norm_text(name)
+    for row in ctx.updates.get("last_products") or ctx.state.get("last_products") or []:
+        if catalog._norm_text(row["name"]) == norm:
+            return catalog.get_visible_product(db, row["id"])
+    rows, _ = catalog.search_products(db, query=name, limit=10, parse_query=True)
+    exact = [p for p in rows if catalog._norm_text(p.name) == norm]
+    if exact:
+        return exact[0]
+    if len(rows) == 1:
+        return rows[0]
+    if not rows:
+        raise AppError(404, "not_found", f"No product named '{name}' was found in the catalog.")
+    tokens = set(catalog.keyword_tokens(name))
+    best = [p for p in rows if tokens and tokens <= set(catalog.keyword_tokens(p.name))]
+    if len(best) == 1:
+        return best[0]
+    ctx.updates["last_products"] = [compact(p) for p in rows[:6]]
+    raise AppError(409, "ambiguous_product", f"'{name}' matches several products: "
+                   + "; ".join(f"#{p.id} {p.name} (Rs. {catalog.money(p.price):,.0f})" for p in rows[:6])
+                   + ". Ask the customer which one.")
+
+
 # ------------------------------------------------------------------ implementations
 
 def _search_products(db: Session, ctx: ToolContext, a: search_products) -> dict:
@@ -161,7 +199,7 @@ def _search_products(db: Session, ctx: ToolContext, a: search_products) -> dict:
 
 
 def _get_product_details(db: Session, ctx: ToolContext, a: get_product_details) -> dict:
-    p = catalog.get_visible_product(db, a.product_id)
+    p = resolve_product(db, ctx, a.product_id, a.product_name)
     d = compact(p) | {"description": (p.description or "")[:400], "in_stock": p.stock > 0,
                       "store_slug": p.store.slug}
     _merge_last(ctx, [compact(p)])
@@ -169,7 +207,7 @@ def _get_product_details(db: Session, ctx: ToolContext, a: get_product_details) 
 
 
 def _check_inventory(db: Session, ctx: ToolContext, a: check_inventory) -> dict:
-    p = catalog.get_visible_product(db, a.product_id)
+    p = resolve_product(db, ctx, a.product_id, a.product_name)
     colors, sizes = catalog.decode_list(p.colors), catalog.decode_list(p.sizes)
     color_ok = not a.color or not colors or catalog.norm_color(a.color) in colors
     size_ok = not a.size or not sizes or catalog.norm_size(a.size) in sizes
@@ -189,11 +227,14 @@ def _search_stores(db: Session, ctx: ToolContext, a: search_stores) -> dict:
 
 def _compare_products(db: Session, ctx: ToolContext, a: compare_products) -> dict:
     rows = []
-    for pid in dict.fromkeys(a.product_ids):
+    refs = [(pid, None) for pid in dict.fromkeys(a.product_ids)] + [(None, n) for n in a.product_names]
+    for pid, name in refs:
         try:
-            rows.append(compact(catalog.get_visible_product(db, pid)))
-        except AppError:
-            rows.append({"id": pid, "error": "not found or unavailable"})
+            row = compact(resolve_product(db, ctx, pid, name))
+            if all(r.get("id") != row["id"] for r in rows):
+                rows.append(row)
+        except AppError as exc:
+            rows.append({"id": pid, "name": name, "error": exc.message})
     valid = [r for r in rows if "error" not in r]
     if len(valid) < 2:
         return {"ok": False, "error": "Need at least two available products to compare", "products": rows}
@@ -226,16 +267,32 @@ def _save_preference(db: Session, ctx: ToolContext, a: save_preference) -> dict:
 
 
 def _add_to_cart(db: Session, ctx: ToolContext, a: add_to_cart) -> dict:
-    cart_svc.add_item(db, ctx.principal, a.product_id, a.quantity, a.color, a.size)
+    p = resolve_product(db, ctx, a.product_id, a.product_name)
+    cart_svc.add_item(db, ctx.principal, p.id, a.quantity, a.color, a.size)
     ctx.updates["pending_order"] = None  # cart changed → any earlier confirmation is void
-    return {"ok": True, "added": {"product_id": a.product_id, "quantity": a.quantity, "color": a.color,
+    return {"ok": True, "added": {"product_id": p.id, "name": p.name, "quantity": a.quantity, "color": a.color,
                                   "size": a.size}, "cart": _cart_summary(db, ctx.principal)}
 
 
 def _remove_from_cart(db: Session, ctx: ToolContext, a: remove_from_cart) -> dict:
-    cart_svc.remove_item(db, ctx.principal, product_id=a.product_id)
+    pid = a.product_id
+    if not pid:
+        cart = cart_svc.get_or_create_cart(db, ctx.principal)
+        want = set(catalog.keyword_tokens(a.product_name or ""))
+        matches = [i for i in cart.items
+                   if want and want <= set(catalog.keyword_tokens(f"{i.product.name} {i.product.category}"))]
+        if len(cart.items) == 1 and not matches and not want:
+            matches = list(cart.items)
+        if not matches:
+            return {"ok": False, "error": "not_in_cart", "message": f"'{a.product_name}' is not in the cart.",
+                    "cart": _cart_summary(db, ctx.principal)}
+        if len({i.product_id for i in matches}) > 1:
+            return {"ok": False, "error": "ambiguous", "message": "Several cart items match: "
+                    + ", ".join(i.product.name for i in matches)}
+        pid = matches[0].product_id
+    cart_svc.remove_item(db, ctx.principal, product_id=pid)
     ctx.updates["pending_order"] = None
-    return {"ok": True, "removed_product_id": a.product_id, "cart": _cart_summary(db, ctx.principal)}
+    return {"ok": True, "removed_product_id": pid, "cart": _cart_summary(db, ctx.principal)}
 
 
 def _get_cart(db: Session, ctx: ToolContext, a: get_cart) -> dict:

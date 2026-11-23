@@ -1,0 +1,117 @@
+{
+  "suite": "functional",
+  "description": "Ten OneSeller-specific scenarios run against the public POST /chat API on the seeded demo catalog (app/seed.py). Matching is case-insensitive. A case passes only if every turn and every DB check passes. 'restart' kills and restarts the API server process.",
+  "cases": [
+    {
+      "id": "F01",
+      "category": "product_search_accuracy",
+      "title": "Keyword product search",
+      "steps": [
+        {"message": "Do you have any oxford shirts?",
+         "expect": {"tools_any": ["search_products"], "reply_all": ["Classic Black Oxford Shirt"], "reply_none": ["Linen"]}}
+      ]
+    },
+    {
+      "id": "F02",
+      "category": "price_range_filtering",
+      "title": "Shoes under a budget",
+      "steps": [
+        {"message": "Show me shoes under Rs. 6500",
+         "expect": {"tools_any": ["search_products"], "tool_args": {"search_products": {"max_price": {"lte": 6500}}},
+                    "reply_all": ["Court Classic", "Peshawari"], "reply_none": ["Cloud Runner"]}}
+      ]
+    },
+    {
+      "id": "F03",
+      "category": "category_matching",
+      "title": "Browse a category",
+      "steps": [
+        {"message": "What jackets do you have?",
+         "expect": {"tools_any": ["search_products"], "reply_all": ["Bomber", "Trench"], "reply_none": ["Oxford", "Sneakers"]}}
+      ]
+    },
+    {
+      "id": "F04",
+      "category": "color_size_matching",
+      "title": "Color + size filter",
+      "steps": [
+        {"message": "I need a black hoodie in size XL",
+         "expect": {"tools_any": ["search_products"], "reply_all": ["Black Training Hoodie"], "reply_none": ["Bomber"]}}
+      ]
+    },
+    {
+      "id": "F05",
+      "category": "inventory_accuracy",
+      "title": "Out-of-stock product is reported as unavailable",
+      "steps": [
+        {"message": "Is the Teal Printed Kurta in stock?",
+         "expect": {"tools_any": ["search_products", "check_inventory", "get_product_details"],
+                    "reply_any": ["out of stock", "not in stock", "unavailable", "not available", "no stock", "0 in stock", "zero", "restock", "stock: 0", "stock 0", "currently not"]}}
+      ]
+    },
+    {
+      "id": "F06",
+      "category": "product_comparison",
+      "title": "Compare two named products",
+      "steps": [
+        {"message": "Compare the Cloud Runner Sneakers with the Court Classic White Sneakers. Which one is cheaper?",
+         "expect": {"tools_any": ["search_products", "compare_products", "get_product_details"],
+                    "reply_all": ["Court Classic"], "reply_any": ["5,999", "5999"]}}
+      ]
+    },
+    {
+      "id": "F07",
+      "category": "short_term_memory",
+      "title": "Follow-up refers to earlier results (with a server restart in between)",
+      "steps": [
+        {"message": "Show me bags",
+         "expect": {"tools_any": ["search_products"], "reply_all": ["Canvas Backpack", "Leather Tote"]}},
+        {"restart": true},
+        {"message": "Which of those is more expensive?",
+         "expect": {"reply_all": ["Leather Tote"], "reply_any": ["6,499", "6499"]}}
+      ]
+    },
+    {
+      "id": "F08",
+      "category": "long_term_memory",
+      "title": "Preferences recalled in a new thread after a restart",
+      "steps": [
+        {"message": "Please remember that I prefer navy color and my usual size is XL.", "thread": "a"},
+        {"restart": true},
+        {"message": "What color and size do I usually prefer?", "thread": "b",
+         "expect": {"reply_all": ["navy", "XL"]}}
+      ]
+    },
+    {
+      "id": "F09",
+      "category": "cart_modification",
+      "title": "Add, remove, and inspect the cart",
+      "steps": [
+        {"message": "Add the Black Crew Neck T-Shirt in size L to my cart",
+         "expect": {"tools_any": ["add_to_cart"], "reply_all": ["Crew Neck"]}},
+        {"check_db": {"cart_items": 1}},
+        {"message": "Actually, remove the t-shirt from my cart",
+         "expect": {"tools_any": ["remove_from_cart"]}},
+        {"check_db": {"cart_items": 0}},
+        {"message": "What's in my cart now?",
+         "expect": {"reply_any": ["empty", "no items", "nothing"]}}
+      ]
+    },
+    {
+      "id": "F10",
+      "category": "order_after_confirmation",
+      "title": "Checkout, restart, then confirm — order exists only after 'yes'",
+      "steps": [
+        {"message": "Add the Mustard Silk Dupatta to my cart", "expect": {"tools_any": ["add_to_cart"]}},
+        {"message": "I want to checkout", "expect": {"tools_any": ["prepare_checkout"]}},
+        {"message": "My name is Sara Iqbal, phone 03331234567, address Flat 4 Block B Clifton, city Karachi",
+         "expect": {"tools_any": ["set_delivery_details"], "reply_any": ["yes"]}},
+        {"check_db": {"orders": 0}},
+        {"restart": true},
+        {"message": "yes",
+         "expect": {"tools_any": ["create_order"], "reply_any": ["confirmed"]}},
+        {"check_db": {"orders": 1}}
+      ]
+    }
+  ]
+}
