@@ -270,3 +270,14 @@ def test_budget_guard_blocks_paid_calls(client, monkeypatch):
     with pytest.raises(usage.BudgetExceeded):
         usage.check_budget("anthropic")
     usage.check_budget("ollama")  # local model is free
+
+
+def test_preference_extraction_is_conservative():
+    from app.services.catalog import parse_free_text
+    from app.services.memory import extract_preferences
+    assert extract_preferences("What size do I usually wear?") == {}
+    assert extract_preferences("I usually wear size M") == {"preferred_sizes": "M"}
+    assert extract_preferences("I prefer black shirts, my budget is 3k") == {
+        "budget_max": "3000", "preferred_colors": "black", "preferred_categories": "shirt"}
+    assert "size" not in parse_free_text("what size do you have")
+    assert parse_free_text("shoes size 42 under 5000") == {"max_price": 5000.0, "size": "42"}

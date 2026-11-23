@@ -73,7 +73,7 @@ def extract_preferences(text: str) -> dict:
     if m := BUDGET_RE.search(text):
         n = float(m.group(1).replace(",", "")) * (1000 if m.group(2) else 1)
         found["budget_max"] = str(int(n))
-    if PREF_RE.search(text):
+    if PREF_RE.search(text) and not text.strip().endswith("?"):  # questions are not statements of preference
         parsed = catalog.parse_free_text(text)
         if parsed.get("color"):
             found["preferred_colors"] = parsed["color"]

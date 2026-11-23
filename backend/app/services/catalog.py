@@ -88,7 +88,7 @@ def _norm_text(text: str) -> str:
 PRICE_MAX_RE = re.compile(r"(?:under|below|less than|upto|up to|max(?:imum)?|within|<=?|budget(?: of| is)?)\s*(?:rs\.?|pkr|rupees)?\s*([\d,]+(?:\.\d+)?)\s*(k)?", re.I)
 PRICE_MIN_RE = re.compile(r"(?:over|above|more than|at least|min(?:imum)?|>=?)\s*(?:rs\.?|pkr|rupees)?\s*([\d,]+(?:\.\d+)?)\s*(k)?", re.I)
 PRICE_RANGE_RE = re.compile(r"between\s*(?:rs\.?|pkr)?\s*([\d,]+)\s*(k)?\s*(?:and|-|to)\s*(?:rs\.?|pkr)?\s*([\d,]+)\s*(k)?", re.I)
-SIZE_RE = re.compile(r"\b(extra small|extra large|x-small|x-large|xx-large|small|medium|large|xxxl|xxl|3xl|2xl|xl|xs|free size|one size)\b|\bsize\s+([a-z0-9]{1,4})\b", re.I)
+SIZE_RE = re.compile(r"\b(extra small|extra large|x-small|x-large|xx-large|small|medium|large|xxxl|xxl|3xl|2xl|xl|xs|free size|one size)\b|\bsize\s+(xs|s|m|l|xl|xxl|xxxl|\d{2,3})\b", re.I)
 
 
 def _num(v: str, k: str | None) -> float:
