@@ -1,0 +1,27 @@
+# secrets
+.env
+.env.*
+!.env.example
+*.pem
+# python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+*.egg-info/
+# local databases
+*.db
+*.db-shm
+*.db-wal
+# node / next
+node_modules/
+.next/
+out/
+frontend/next-env.d.ts
+*.tsbuildinfo
+.vercel
+# misc
+.DS_Store
+*.log
+claude_prompt.md
+benchmarks/results/*.raw.json
