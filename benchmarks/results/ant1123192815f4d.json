@@ -1,0 +1,63 @@
+{
+  "run_id": "ant1123192815f4d",
+  "provider": "anthropic",
+  "model": "claude-haiku-5-5",
+  "started_at": "2026-11-23T14:28:18.483303+00:00",
+  "label": "phase3-canary",
+  "suites": {
+    "functional": {
+      "summary": {
+        "cases": 1,
+        "passed": 1,
+        "success_rate": 100.0,
+        "turns": 1,
+        "tool_accuracy": 100.0,
+        "tokens_in": 4225,
+        "tokens_out": 155,
+        "avg_latency_s": 3.61,
+        "max_latency_s": 3.61
+      },
+      "cases": [
+        {
+          "id": "F01",
+          "category": "product_search_accuracy",
+          "title": "Keyword product search",
+          "passed": true,
+          "errors": [],
+          "turns": [
+            {
+              "step": 0,
+              "message": "Do you have any oxford shirts?",
+              "reply": "Yes! We have one Oxford shirt:\n\n- **Classic Black Oxford Shirt** (#1), Rs. 2,799, from Urban Threads\n- Colors: Black\n- Sizes: S, M, L, XL\n- In stock (14 units available)\n\nWould you like me to check a specific size for you?",
+              "tool_calls": [
+                {
+                  "name": "search_products",
+                  "args": {
+                    "query": "oxford shirt"
+                  },
+                  "agent": "catalog_agent",
+                  "ok": true
+                }
+              ],
+              "tokens": {
+                "in": 4225,
+                "out": 155
+              },
+              "latency_s": 3.61,
+              "errors": [],
+              "tool_check": true
+            }
+          ],
+          "seconds": 3.6
+        }
+      ]
+    }
+  },
+  "usage": {
+    "llm_calls": 2,
+    "tokens_in": 4225,
+    "tokens_out": 155,
+    "cost_usd": 0.0005
+  },
+  "ledger_total_usd": 0.0005
+}

@@ -301,3 +301,15 @@ def test_tools_resolve_products_by_name(client):
     gone = T.execute("remove_from_cart", {"product_name": "linen"}, "order_agent", ctx)
     assert gone["ok"] and gone["cart"]["items"] == []
     assert T.execute("add_to_cart", {"product_name": "flying carpet"}, "order_agent", ctx)["error"] == "not_found"
+
+
+def test_add_to_cart_requires_add_intent_in_current_message(client):
+    from app.agent import tools as T
+    _, oxford, _, _ = seed_catalog(client)
+    def ctx(msg):
+        return T.ToolContext(principal="api:gate", channel="public_api", sandbox=True, customer_id=None,
+                             user_message=msg, state={})
+    assert T.execute("add_to_cart", {"product_id": oxford["id"], "size": "M"}, "order_agent", ctx("Add the oxford shirt"))["ok"]
+    dup = T.execute("add_to_cart", {"product_id": oxford["id"], "size": "M"}, "order_agent",
+                    ctx("My name is Sara, phone 0333, address Flat 4, city Karachi"))
+    assert dup["error"] == "not_requested" and dup["cart"]["item_count"] == 1

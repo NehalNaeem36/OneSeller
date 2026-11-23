@@ -55,7 +55,7 @@ def load_context(state: AgentState, config: RunnableConfig) -> dict:
                 except ValueError:
                     pass
         profile = memory.load(db, principal)
-    update: dict = {"profile": profile, "turn_tool_calls": [], "turn_tokens": {"in": 0, "out": 0}, "steps": 0,
+    update: dict = {"profile": profile, "meta": {"cart_at_turn_start": _cart_line(principal)}, "turn_tool_calls": [], "turn_tokens": {"in": 0, "out": 0}, "steps": 0,
                     "blocked_reason": None, "reply": "", "intent": "", "active_agent": ""}
     if not state.get("delivery"):
         update["delivery"] = tools.delivery_from_profile(principal)
@@ -71,12 +71,13 @@ def guard_node(state: AgentState) -> dict:
     return {"blocked_reason": reason}
 
 
-ORDER_KW = re.compile(r"\b(cart|basket|checkout|check out|place (an |the |my )?order|buy (it|this|that|them|now)|"
+ORDER_KW = re.compile(r"\b(cart|basket|checkout|check out|orders?|create_order|place (an |the |my )?order|buy (it|this|that|them|now)|"
                       r"purchase|add (it|this|that|them|the|one|to)|remove|delete from|my orders?|order status|"
                       r"track|deliver(y)? (to|address|details)|my (name|phone|address|number) is|ship to)\b", re.I)
 ADD_RE = re.compile(r"\badd\b", re.I)
 CHECKOUT_KW = re.compile(r"\b(check ?out|place (an |the |my )?order|proceed to (pay|payment|checkout)|"
                          r"complete (the |my )?(order|purchase)|buy (it |them )?now|confirm (my |the )?order)\b", re.I)
+DETAILS_RE = re.compile(r"\b(my name is|name:|phone|mobile|number is|address|deliver(y)? to|ship to|city)\b", re.I)
 CHECKOUT_TALK = re.compile(r"\b(confirm|checkout|check out|place (the|your) order|order summary)\b", re.I)
 
 
@@ -100,7 +101,7 @@ def intent_router(state: AgentState, config: RunnableConfig) -> dict:
         return {"intent": "confirm", "active_agent": "order_agent"}
     if pending and guard.is_negative(text):
         return {"intent": "cancel_checkout", "active_agent": "order_agent", "pending_order": None}
-    if CHECKOUT_KW.search(text):
+    if CHECKOUT_KW.search(text) and not DETAILS_RE.search(text):
         return {"intent": "checkout", "active_agent": "order_agent"}
     if guard.is_affirmative(text) and _last_ai_mentions_checkout(state):
         return {"intent": "checkout", "active_agent": "order_agent"}  # "yes" with no live summary → rebuild it
@@ -122,7 +123,17 @@ def intent_router(state: AgentState, config: RunnableConfig) -> dict:
     return {"intent": agent, "active_agent": f"{agent}_agent", "turn_tokens": tokens}
 
 
-def _context_block(state: AgentState, agent: str) -> str:
+def _cart_line(principal: str) -> str:
+    from ..services import cart as cart_svc
+    with SessionLocal() as db:
+        out = cart_svc.cart_out(cart_svc.get_or_create_cart(db, principal))
+        db.commit()
+    if not out["items"]:
+        return "empty"
+    return "; ".join(f"{i['quantity']} x #{i['product_id']} {i['name']}" for i in out["items"]) + f" (total Rs. {out['total']:,.0f})"
+
+
+def _context_block(state: AgentState, agent: str, principal: str = "") -> str:
     parts = [f"Customer's saved preferences (long-term memory): {memory.profile_text(state.get('profile') or {})}"]
     last = state.get("last_products") or []
     if last:
@@ -138,6 +149,8 @@ def _context_block(state: AgentState, agent: str) -> str:
     else:
         parts.append("Recently shown products: none yet.")
     if agent == "order_agent":
+        parts.append("Cart before the customer's latest message: " + (state.get("meta") or {}).get("cart_at_turn_start", "unknown")
+                     + " (tool results in this turn show any changes since)")
         d = state.get("delivery") or {}
         parts.append("Delivery details collected: " + (json.dumps(d) if d else "none"))
         if state.get("intent") == "cancel_checkout":
@@ -145,13 +158,13 @@ def _context_block(state: AgentState, agent: str) -> str:
     return "\n\n".join(parts)
 
 
-def _build_messages(state: AgentState, agent: str) -> list:
+def _build_messages(state: AgentState, agent: str, principal: str = "") -> list:
     msgs = state.get("messages", [])
     idx = max((i for i, m in enumerate(msgs) if isinstance(m, HumanMessage)), default=0)
     history = [m for m in msgs[:idx]
                if isinstance(m, HumanMessage) or (isinstance(m, AIMessage) and not m.tool_calls and m.content)]
     history = history[-get_settings().agent_history_messages:]
-    system = SystemMessage(AGENT_PROMPTS[agent] + "\n\n" + _context_block(state, agent))
+    system = SystemMessage(AGENT_PROMPTS[agent] + "\n\n" + _context_block(state, agent, principal))
     return [system, *history, *msgs[idx:]]
 
 
@@ -231,7 +244,7 @@ def make_agent_node(agent: str):
                         "steps": steps + 1}
 
         bound = tools.AGENT_TOOLS[agent] if steps < get_settings().agent_max_tool_steps else None
-        msg, tok = invoke_llm(_build_messages(state, agent), bound, principal=cfg.get("principal"))
+        msg, tok = invoke_llm(_build_messages(state, agent, cfg.get("principal", "")), bound, principal=cfg.get("principal"))
         if not bound and msg.tool_calls:
             msg = AIMessage(clean_text(msg.content) or "Sorry, I couldn't complete that. Could you rephrase?")
         return {"messages": [msg], "turn_tokens": _add_tokens(state, tok), "steps": steps + (1 if msg.tool_calls else 0)}

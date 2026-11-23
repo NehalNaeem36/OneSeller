@@ -1,0 +1,42 @@
+{
+  "authorized_usd": 1.0,
+  "total_usd": 0.030311,
+  "runs": [
+    {
+      "run_id": "ant1123192815f4d",
+      "at": "2026-11-23T14:28:18.483303+00:00",
+      "label": "phase3-canary",
+      "llm_calls": 2,
+      "tokens_in": 4225,
+      "tokens_out": 155,
+      "cost_usd": 0.0005
+    },
+    {
+      "run_id": "ant1123192831e8b",
+      "at": "2026-11-23T14:28:34.138823+00:00",
+      "label": "phase3-full-run1",
+      "llm_calls": 35,
+      "tokens_in": 76087,
+      "tokens_out": 3950,
+      "cost_usd": 0.009584
+    },
+    {
+      "run_id": "ant1123193237a00",
+      "at": "2026-11-23T14:32:40.557852+00:00",
+      "label": "phase3-full-run2-after-fixes",
+      "llm_calls": 36,
+      "tokens_in": 80403,
+      "tokens_out": 4051,
+      "cost_usd": 0.010066
+    },
+    {
+      "run_id": "ant112319340257b",
+      "at": "2026-11-23T14:34:05.252896+00:00",
+      "label": "phase3-full-run3-final",
+      "llm_calls": 36,
+      "tokens_in": 80530,
+      "tokens_out": 4216,
+      "cost_usd": 0.010161
+    }
+  ]
+}

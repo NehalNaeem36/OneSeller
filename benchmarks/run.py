@@ -140,6 +140,11 @@ def check_db(db_path: Path, principal: str, spec: dict) -> list[str]:
                             "where c.principal=?", (principal,)).fetchone()[0]
             if n != spec["cart_items"]:
                 errors.append(f"expected {spec['cart_items']} cart items in DB, found {n}")
+        if "order_quantity" in spec:
+            n = con.execute("select coalesce(sum(oi.quantity),0) from order_items oi join orders o on o.id=oi.order_id "
+                            "where o.principal=?", (principal,)).fetchone()[0]
+            if n != spec["order_quantity"]:
+                errors.append(f"expected {spec['order_quantity']} units ordered, found {n}")
         if "product_price" in spec:
             p = spec["product_price"]
             row = con.execute("select price from products where name=?", (p["name"],)).fetchone()

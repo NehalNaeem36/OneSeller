@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import secrets
 from dataclasses import dataclass, field
 from typing import Any, Callable, Literal, Optional
@@ -266,7 +267,15 @@ def _save_preference(db: Session, ctx: ToolContext, a: save_preference) -> dict:
     return {"ok": True, "saved": {a.key: value}}
 
 
+ADD_INTENT_RE = re.compile(r"\b(add|cart|basket|buy|take|want|get me|order|purchase|include|another|more|"
+                           r"one more|i'?ll have|grab)\b|\b\d+\s*x\b", re.I)
+
+
 def _add_to_cart(db: Session, ctx: ToolContext, a: add_to_cart) -> dict:
+    if ctx.user_message and not ADD_INTENT_RE.search(ctx.user_message):
+        return {"ok": False, "error": "not_requested",
+                "message": "The customer did not ask to add an item in this message. The cart is unchanged.",
+                "cart": _cart_summary(db, ctx.principal)}
     p = resolve_product(db, ctx, a.product_id, a.product_name)
     cart_svc.add_item(db, ctx.principal, p.id, a.quantity, a.color, a.size)
     ctx.updates["pending_order"] = None  # cart changed → any earlier confirmation is void

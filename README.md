@@ -10,7 +10,19 @@
 | LLM | Local Qwen3‑4B‑Instruct via Ollama (dev) · `claude-haiku-5-5` (final), switchable by env var |
 | Database | PostgreSQL (Neon / Supabase) in production · SQLite locally |
 
-> **Status:** Phase 1 (architecture + baseline implementation) complete and verified locally. Benchmarks (Phase 2), Claude evaluation (Phase 3) and deployment (Phase 4) are pending — see [Project status](#project-status).
+> **Status:** Phases 1–3 complete (implementation, local-Qwen benchmark, Claude Haiku 5.5 evaluation). Deployment (Phase 4) is pending — see [Project status](#project-status).
+
+## Benchmark
+
+10 functional scenarios ([`tests.json`](benchmarks/tests.json), incl. multi-turn and real server restarts) + 5 attacks ([`security_tests.json`](benchmarks/security_tests.json)), verified against replies, tool calls/arguments **and database state**. Details: [benchmarks/RESULTS.md](benchmarks/RESULTS.md).
+
+| Model | Functional | Security | Tool accuracy | Avg latency / turn | Tokens in / out (full run) | Cost / full run |
+|---|---|---|---|---|---|---|
+| Qwen3‑4B‑Instruct (local) — baseline | 6/10 (60%) | 5/5 | 53.8% | 3.8 s | 25.9k / 1.3k | $0 |
+| Qwen3‑4B‑Instruct (local) — final | **10/10** | **5/5** | 100% | 3.9 s | 40.5k / 1.6k | $0 |
+| `claude-haiku-5-5` — final | **10/10** | **5/5** | 100% | **2.1 s** | 80.5k / 4.2k | **$0.0102** |
+
+Total Claude spend for all Phase 3 testing: **$0.0303** across 109 API calls (authorized: $1.00, hard-capped at $0.90).
 
 Full design: **[ARCHITECTURE.md](ARCHITECTURE.md)** (system diagram, ER diagram, agent graph, tools, memory, security, API).
 
@@ -138,9 +150,11 @@ Switch to Claude: set `LLM_PROVIDER=anthropic`, `ANTHROPIC_API_KEY=…` (model `
 
 ```bash
 cd backend
-uv run pytest -q                              # 33 tests, no network (scripted fake LLM)
+uv run pytest -q                              # 35 tests, no network (scripted fake LLM)
 PYTHONPATH=. uv run python scripts/smoke_demo.py     # spec demo conversation against the configured LLM
 uv run python scripts/http_e2e.py http://localhost:8000  # full seller→customer→agent order flow over HTTP
+uv run python ../benchmarks/run.py --provider ollama     # benchmark suite (free, local)
+uv run python ../benchmarks/run.py --provider anthropic  # paid; refuses to run past the spend ledger cap
 ```
 
 ### Environment variables
@@ -153,8 +167,8 @@ See [`.env.example`](.env.example) for every variable (database, JWT secret, COR
 | Phase | Status |
 |---|---|
 | 1 · Architecture, repository, baseline | ✅ Done — see [benchmarks/BASELINE.md](benchmarks/BASELINE.md) |
-| 2 · Local Qwen benchmark suite (`tests.json`, security suite) & iterative fixes | ⏳ Next |
-| 3 · Final `claude-haiku-5-5` evaluation (≤ $1, budget-guarded) | ⏳ Pending |
+| 2 · Local Qwen benchmark suite (`tests.json`, security suite) & iterative fixes | ✅ Done — 60% → 100% functional |
+| 3 · Final `claude-haiku-5-5` evaluation (≤ $1, budget-guarded) | ✅ Done — 100%, $0.0303 spent |
 | 4 · Deployment (Vercel + HF Spaces/Render + Neon/Supabase), demo GIF/video | ⏳ Pending |
 
-The benchmark table, deployment URLs and demo GIF will be added here as those phases complete.
+Deployment URLs and the demo GIF will be added here when Phase 4 completes.
