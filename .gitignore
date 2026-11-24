@@ -25,3 +25,4 @@ frontend/next-env.d.ts
 *.log
 claude_prompt.md
 benchmarks/results/*.raw.json
+.neon

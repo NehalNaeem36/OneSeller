@@ -18,8 +18,11 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 
 @router.post("")
-def chat(body: AuthChatIn, user: User = Depends(require_customer)):
+def chat(body: AuthChatIn, user: User = Depends(require_customer), db: Session = Depends(get_db)):
     limiter.hit(f"authchat:{user.id}", get_settings().rate_limit_chat_per_minute)
+    # Return the auth lookup's connection to the pool now: an agent turn can take many seconds, and holding an
+    # idle-in-transaction connection that long ties up the pool (and Neon may drop it).
+    db.close()
     return run_turn(customer_principal(user), body.thread_id, body.message, channel="agent", sandbox=False,
                     customer_id=user.id)
 

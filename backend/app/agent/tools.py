@@ -11,9 +11,9 @@ import json
 import re
 import secrets
 from dataclasses import dataclass, field
-from typing import Any, Callable, Literal, Optional
+from typing import Annotated, Any, Callable, Literal, Optional
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, BeforeValidator, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -37,6 +37,18 @@ class ToolContext:
 
 # ------------------------------------------------------------------ schemas (LLM-visible)
 
+def _coerce_id(v: Any) -> Any:
+    """Models often write ids as "#27" or "27"; accept those, leave anything else to normal validation."""
+    if isinstance(v, str):
+        m = re.fullmatch(r"\s*(?:#|id[:\s]*)?\s*(\d+)\s*", v, re.I)
+        if m:
+            return int(m.group(1))
+    return v
+
+
+ProductId = Annotated[int, BeforeValidator(_coerce_id)]
+
+
 class search_products(BaseModel):
     """Search the live product catalog. Use for any product lookup. Put product words (e.g. 'shirt') in query and
     use the dedicated filter fields for color, size and price. Returns real products with prices and stock."""
@@ -52,14 +64,14 @@ class search_products(BaseModel):
 
 class get_product_details(BaseModel):
     """Get full details (description, colors, sizes, stock, store) of one product, by id or by name."""
-    product_id: Optional[int] = Field(None, description="Product id from earlier results, if known")
+    product_id: Optional[ProductId] = Field(None, description="Product id from earlier results, if known")
     product_name: Optional[str] = Field(None, description="Product name if the id is not known, e.g. 'Teal Printed Kurta'")
 
 
 class check_inventory(BaseModel):
     """Check whether a product (optionally a specific color/size/quantity) is in stock right now. Pass the product
     id, or the product name if you don't know the id."""
-    product_id: Optional[int] = Field(None, description="Product id from earlier results, if known")
+    product_id: Optional[ProductId] = Field(None, description="Product id from earlier results, if known")
     product_name: Optional[str] = Field(None, description="Product name if the id is not known, e.g. 'Teal Printed Kurta'")
     color: Optional[str] = None
     size: Optional[str] = None
@@ -74,7 +86,7 @@ class search_stores(BaseModel):
 class compare_products(BaseModel):
     """Compare 2-5 products side by side (price, stock, colors, sizes) using live data. Pass ids if known,
     otherwise product names."""
-    product_ids: list[int] = Field(default_factory=list, max_length=5)
+    product_ids: list[ProductId] = Field(default_factory=list, max_length=5)
     product_names: list[str] = Field(default_factory=list, max_length=5)
 
 
@@ -87,7 +99,7 @@ class save_preference(BaseModel):
 class add_to_cart(BaseModel):
     """Add a product to the customer's cart. Pass the product id from earlier results, or the product name if the
     customer named a product you haven't looked up (it is resolved against the live catalog)."""
-    product_id: Optional[int] = Field(None, description="Product id from earlier results, if known")
+    product_id: Optional[ProductId] = Field(None, description="Product id from earlier results, if known")
     product_name: Optional[str] = Field(None, description="Product name if the id is not known, e.g. 'Teal Printed Kurta'")
     quantity: int = Field(1, ge=1, le=100)
     color: Optional[str] = None
@@ -96,7 +108,7 @@ class add_to_cart(BaseModel):
 
 class remove_from_cart(BaseModel):
     """Remove a product from the customer's cart, by product id or by (part of) its name, e.g. 't-shirt'."""
-    product_id: Optional[int] = Field(None, description="Product id from earlier results, if known")
+    product_id: Optional[ProductId] = Field(None, description="Product id from earlier results, if known")
     product_name: Optional[str] = Field(None, description="Product name if the id is not known, e.g. 'Teal Printed Kurta'")
 
 

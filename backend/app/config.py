@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     app_name: str = "OneSeller AI"
     environment: str = "development"
     database_url: str = f"sqlite:///{ROOT / 'backend' / 'oneseller.db'}"
+    # Neon: DATABASE_URL is the pooled (-pooler) endpoint for app traffic; the direct endpoint is used for
+    # schema migrations and the LangGraph checkpointer (DDL + session state). Falls back to DATABASE_URL.
+    database_url_unpooled: str = ""
     jwt_secret: str = "dev-only-change-me-please-32-bytes-min"
     jwt_expire_minutes: int = 60 * 24 * 7
     cors_origins: str = "http://localhost:3000"
@@ -66,6 +69,14 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def direct_database_url(self) -> str:
+        # Only pair the direct URL with a Postgres DATABASE_URL, so a SQLite override (tests, benchmarks)
+        # never silently migrates the Neon database.
+        if self.database_url.startswith("sqlite") or not self.database_url_unpooled:
+            return self.database_url
+        return self.database_url_unpooled
 
     @property
     def is_sqlite(self) -> bool:

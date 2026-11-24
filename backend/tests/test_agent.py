@@ -313,3 +313,14 @@ def test_add_to_cart_requires_add_intent_in_current_message(client):
     dup = T.execute("add_to_cart", {"product_id": oxford["id"], "size": "M"}, "order_agent",
                     ctx("My name is Sara, phone 0333, address Flat 4, city Karachi"))
     assert dup["error"] == "not_requested" and dup["cart"]["item_count"] == 1
+
+
+def test_tool_ids_accept_hash_and_string_forms():
+    from app.agent import tools
+    assert tools.add_to_cart(product_id="#27").product_id == 27
+    assert tools.add_to_cart(product_id=" 27 ").product_id == 27
+    assert tools.compare_products(product_ids=["#3", 4]).product_ids == [3, 4]
+    import pytest
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        tools.add_to_cart(product_id="abc")

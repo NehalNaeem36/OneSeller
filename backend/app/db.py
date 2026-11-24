@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 
 from sqlalchemy import create_engine, event
@@ -8,15 +9,24 @@ from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from .config import get_settings
 
 
+log = logging.getLogger("oneseller.db")
+
+
 class Base(DeclarativeBase):
     pass
 
 
-def _make_engine(url: str):
+def sqlalchemy_url(url: str) -> str:
+    """Normalize postgres URLs to the psycopg 3 driver SQLAlchemy should use."""
     if url.startswith("postgres://"):
-        url = url.replace("postgres://", "postgresql+psycopg://", 1)
-    elif url.startswith("postgresql://"):
-        url = url.replace("postgresql://", "postgresql+psycopg://", 1)
+        return url.replace("postgres://", "postgresql+psycopg://", 1)
+    if url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+psycopg://", 1)
+    return url
+
+
+def _make_engine(url: str):
+    url = sqlalchemy_url(url)
     if url.startswith("sqlite"):
         eng = create_engine(url, connect_args={"check_same_thread": False, "timeout": 30})
 
@@ -28,7 +38,10 @@ def _make_engine(url: str):
             cur.close()
 
         return eng
-    return create_engine(url, pool_pre_ping=True, pool_size=5, max_overflow=5)
+    # Neon pooled endpoint (PgBouncer, transaction mode): no server-side prepared statements; pre-ping +
+    # recycle because Neon computes scale to zero and drop idle connections.
+    return create_engine(url, pool_pre_ping=True, pool_recycle=300, pool_size=5, max_overflow=5,
+                         connect_args={"prepare_threshold": None})
 
 
 engine = _make_engine(get_settings().database_url)
@@ -47,4 +60,11 @@ def get_db() -> Iterator[Session]:
     try:
         yield db
     finally:
-        db.close()
+        try:
+            db.close()
+        except Exception:  # connection dropped by the server (e.g. Neon idle timeout): discard it, don't crash
+            log.warning("discarding broken DB connection on session close", exc_info=True)
+            try:
+                db.invalidate()
+            except Exception:
+                pass

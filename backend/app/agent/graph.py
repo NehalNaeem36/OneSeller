@@ -353,9 +353,11 @@ def make_checkpointer():
     from psycopg.rows import dict_row
     from psycopg_pool import ConnectionPool
     from langgraph.checkpoint.postgres import PostgresSaver
-    pg = url.replace("postgresql+psycopg://", "postgresql://").replace("postgres://", "postgresql://")
-    pool = ConnectionPool(pg, max_size=5, kwargs={"autocommit": True, "prepare_threshold": 0,
-                                                  "row_factory": dict_row}, open=True)
+    # Direct (non-pooled) endpoint: setup() runs DDL and the saver uses prepared statements.
+    direct = s.direct_database_url
+    pg = direct.replace("postgresql+psycopg://", "postgresql://").replace("postgres://", "postgresql://")
+    pool = ConnectionPool(pg, max_size=5, check=ConnectionPool.check_connection, max_idle=240,
+                          kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row}, open=True)
     saver = PostgresSaver(pool)
     saver.setup()
     return saver

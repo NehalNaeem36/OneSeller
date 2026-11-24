@@ -21,10 +21,11 @@ if config.config_file_name is not None:
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.config import get_settings
-from app.db import Base, engine as app_engine
+from app.db import Base, sqlalchemy_url
 import app.models  # noqa: F401  (register tables)
 target_metadata = Base.metadata
-config.set_main_option("sqlalchemy.url", str(app_engine.url).replace("%", "%%"))
+# Migrations run over the direct (non-pooled) connection. Use the raw URL: str(engine.url) masks the password.
+config.set_main_option("sqlalchemy.url", sqlalchemy_url(get_settings().direct_database_url).replace("%", "%%"))
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
@@ -63,7 +64,9 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    connectable = app_engine
+    from sqlalchemy import create_engine
+    from sqlalchemy.pool import NullPool
+    connectable = create_engine(config.get_main_option("sqlalchemy.url"), poolclass=NullPool)
 
     with connectable.connect() as connection:
         context.configure(
